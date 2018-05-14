@@ -2,6 +2,7 @@
 
 set -e
 
+PROJECT_ROOT=$(cd `dirname $0` && pwd)
 TARGET_CONTAINER_ID=$(uuidgen)
 NETWORK_ID=$(uuidgen)
 
@@ -24,16 +25,20 @@ docker network create --driver=bridge \
 
 # 1. Start target container
 echo "Starting target container $TARGET_CONTAINER_ID"
-docker run --rm --detach --name ${TARGET_CONTAINER_ID} --hostname targethost --privileged \
-  --network ${NETWORK_ID} --network-alias=targethost \
-  -v $(pwd)/keys/target/authorized_keys:/root/.ssh/authorized_keys \
+docker run --rm --detach --name ${TARGET_CONTAINER_ID} \
+  --hostname targethost \
+  --privileged \
+  --network ${NETWORK_ID} \
+  --network-alias=targethost \
+  --volume ${PROJECT_ROOT}/keys/target/authorized_keys:/root/.ssh/authorized_keys \
   chrismeyers/centos7
 
-# 2. Execute ansible playbook in ansible runner container
-echo "Executing ansible playbook"
-docker run --rm -t -v "$(pwd)/playbook":/playbook -w /playbook \
+# 2. Execute ansible playbook and testinfra tests in runner container
+echo "Executing ansible lint, playbook and testinfra tests"
+docker run --rm --tty \
+  --volume "${PROJECT_ROOT}/playbook":/playbook \
+  --volume "${PROJECT_ROOT}/test":/test \
+  --workdir /playbook \
   --network ${NETWORK_ID} \
   ansible-runner:latest \
-  ansible-playbook -i inventory site.yml
-
-# 3. Run testinfra tests in ansible container
+  sh -c 'ansible-lint site.yml && ansible-playbook --inventory-file=inventory site.yml && py.test --verbose --connection=ansible --ansible-inventory=inventory /test'

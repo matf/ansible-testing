@@ -1,2 +1,5 @@
 ---
-- debug: msg='hello'
+- name: create test file
+  copy:
+    content: "world"
+    dest: /etc/hello
